@@ -172,6 +172,19 @@ class WinBashStatus:
 _win_bash_status = WinBashStatus.check()
 
 
+def _windows_supports_symlinks():
+    if sys.platform != "win32":
+        return False
+
+    with tempfile.TemporaryDirectory(prefix="gitpython-symlink-check-") as temp_dir:
+        link_path = osp.join(temp_dir, "link")
+        try:
+            os.symlink("missing-target", link_path)
+        except (NotImplementedError, OSError):
+            return False
+        return S_ISLNK(os.lstat(link_path)[ST_MODE])
+
+
 def _make_hook(git_dir, name, content, make_exec=True):
     """A helper to create a hook"""
     hp = hook_path(name, git_dir)
@@ -553,9 +566,9 @@ class TestIndex(TestBase):
     # END num existing helper
 
     @pytest.mark.xfail(
-        sys.platform == "win32" and Git().config("core.symlinks") == "true",
+        sys.platform == "win32" and (Git().config("core.symlinks") == "true" or _windows_supports_symlinks()),
         reason="Assumes symlinks are not created on Windows and opens a symlink to a nonexistent target.",
-        raises=FileNotFoundError,
+        raises=(FileNotFoundError, GitCommandError),
     )
     @with_rw_repo("0.1.6")
     def test_index_mutation(self, rw_repo):
