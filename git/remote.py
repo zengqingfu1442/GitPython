@@ -38,6 +38,7 @@ from typing import (
     Sequence,
     TYPE_CHECKING,
     Type,
+    TypeVar,
     Union,
     cast,
     overload,
@@ -49,6 +50,8 @@ if TYPE_CHECKING:
     from git.objects.commit import Commit
     from git.objects.submodule.base import UpdateProgress
     from git.repo.base import Repo
+
+_T_RemoteName = TypeVar("_T_RemoteName", bound=Union[str, "Remote"])
 
 flagKeyLiteral = Literal[" ", "!", "+", "-", "*", "=", "t", "?"]
 
@@ -820,19 +823,20 @@ class Remote(LazyMixin, IterableObj):
         return cls.create(repo, name, url, **kwargs)
 
     @classmethod
-    def remove(cls, repo: "Repo", name: str) -> str:
+    def remove(cls, repo: "Repo", name: _T_RemoteName) -> _T_RemoteName:
         """Remove the remote with the given name.
 
         :return:
             The passed remote name to remove
         """
         repo.git.remote("rm", name)
-        if isinstance(name, cls):
-            name._clear_cache()
+        remote = name
+        if isinstance(remote, cls):
+            remote._clear_cache()
         return name
 
     @classmethod
-    def rm(cls, repo: "Repo", name: str) -> str:
+    def rm(cls, repo: "Repo", name: _T_RemoteName) -> _T_RemoteName:
         """Alias of remove.
         Remove the remote with the given name.
 
@@ -901,7 +905,7 @@ class Remote(LazyMixin, IterableObj):
             kill_after_timeout=kill_after_timeout,
         )
 
-        stderr_text = progress.error_lines and "\n".join(progress.error_lines) or ""
+        stderr_text = "\n".join(progress.error_lines)
         proc.wait(stderr=stderr_text)
         if stderr_text:
             _logger.warning("Error lines received while fetching: %s", stderr_text)
@@ -973,7 +977,7 @@ class Remote(LazyMixin, IterableObj):
             decode_streams=False,
             kill_after_timeout=kill_after_timeout,
         )
-        stderr_text = progress.error_lines and "\n".join(progress.error_lines) or ""
+        stderr_text = "\n".join(progress.error_lines)
         try:
             proc.wait(stderr=stderr_text)
         except Exception as e:

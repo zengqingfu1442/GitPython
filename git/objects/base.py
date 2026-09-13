@@ -18,7 +18,7 @@ from .util import get_object_type_by_name
 
 from typing import Any, TYPE_CHECKING, Union
 
-from git.types import AnyGitObject, GitObjectTypeString, PathLike
+from git.types import AnyGitObject, GitObjectTypeString, PathLike, SupportsWrite
 
 if TYPE_CHECKING:
     from gitdb.base import OStream
@@ -200,7 +200,7 @@ class Object(LazyMixin):
         """
         return self.repo.odb.stream(self.binsha)
 
-    def stream_data(self, ostream: "OStream") -> "Object":
+    def stream_data(self, ostream: SupportsWrite[bytes]) -> "Object":
         """Write our data directly to the given output stream.
 
         :param ostream:

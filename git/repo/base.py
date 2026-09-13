@@ -18,6 +18,7 @@ import sys
 import warnings
 
 import gitdb
+import gitdb.util
 from gitdb.db.loose import LooseObjectDB
 from gitdb.exc import BadObject
 
@@ -33,7 +34,7 @@ from git.exc import (
 from git.index import IndexFile
 from git.objects import Submodule, RootModule, Commit
 from git.refs import HEAD, Head, Reference, TagReference
-from git.remote import Remote, add_progress, to_progress_instance
+from git.remote import Remote, _T_RemoteName, add_progress, to_progress_instance
 from git.util import (
     Actor,
     cygpath,
@@ -95,7 +96,7 @@ _logger = logging.getLogger(__name__)
 
 
 class BlameEntry(NamedTuple):
-    commit: Dict[str, Commit]
+    commit: Commit
     linenos: range
     orig_path: Optional[str]
     orig_linenos: range
@@ -396,7 +397,7 @@ class Repo:
             self._working_tree_dir = None
         # END working dir handling
 
-        self.working_dir: PathLike = self._working_tree_dir or self.common_dir
+        self.working_dir = self._working_tree_dir or self.common_dir
         self.git = self.GitCommandWrapperType(self.working_dir)
         if common_dir_env is not None:
             self.git.update_environment(GIT_DIR=os.fspath(self.git_dir), GIT_COMMON_DIR=os.fspath(self.common_dir))
@@ -718,7 +719,7 @@ class Repo:
         """
         return Remote.create(self, name, url, **kwargs)
 
-    def delete_remote(self, remote: "Remote") -> str:
+    def delete_remote(self, remote: _T_RemoteName) -> _T_RemoteName:
         """Delete the given remote."""
         return Remote.remove(self, remote)
 
@@ -1504,7 +1505,7 @@ class Repo:
         git: "Git",
         url: PathLike,
         path: PathLike,
-        odb_default_type: Type[GitCmdObjectDB],
+        odb_default_type: Type[LooseObjectDB],
         progress: Union["RemoteProgress", "UpdateProgress", Callable[..., "RemoteProgress"], None] = None,
         multi_options: Optional[List[str]] = None,
         allow_unsafe_protocols: bool = False,
@@ -1711,7 +1712,7 @@ class Repo:
     def archive(
         self,
         ostream: Union[TextIO, BinaryIO],
-        treeish: Optional[str] = None,
+        treeish: Union[str, Commit, None] = None,
         prefix: Optional[str] = None,
         allow_unsafe_options: bool = False,
         allow_unsafe_protocols: bool = False,

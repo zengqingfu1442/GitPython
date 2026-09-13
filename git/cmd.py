@@ -100,7 +100,7 @@ _logger = logging.getLogger(__name__)
 
 
 def handle_process_output(
-    process: "Git.AutoInterrupt" | Popen,
+    process: Union["Git.AutoInterrupt", Popen],
     stdout_handler: Union[
         None,
         Callable[[AnyStr], None],
@@ -395,9 +395,7 @@ class _AutoInterrupt:
         :raise git.exc.GitCommandError:
             If the return status is not 0.
         """
-        if stderr is None:
-            stderr_b = b""
-        stderr_b = force_bytes(data=stderr, encoding="utf-8")
+        stderr_b = force_bytes(data=stderr, encoding="utf-8") or b""
         status: Union[int, None]
         if self.proc is not None:
             status = self.proc.wait()
@@ -1180,52 +1178,93 @@ class Git(metaclass=_GitMeta):
     def execute(
         self,
         command: Union[str, Sequence[Any]],
+        istream: Union[None, int, BinaryIO] = None,
         *,
         as_process: Literal[True],
+        **subprocess_kwargs: Any,
     ) -> "AutoInterrupt": ...
 
     @overload
     def execute(
         self,
         command: Union[str, Sequence[Any]],
+        istream: Union[None, int, BinaryIO] = None,
         *,
         as_process: Literal[False] = False,
-        stdout_as_string: Literal[True],
-    ) -> Union[str, Tuple[int, str, str]]: ...
-
-    @overload
-    def execute(
-        self,
-        command: Union[str, Sequence[Any]],
-        *,
-        as_process: Literal[False] = False,
-        stdout_as_string: Literal[False] = False,
-    ) -> Union[bytes, Tuple[int, bytes, str]]: ...
-
-    @overload
-    def execute(
-        self,
-        command: Union[str, Sequence[Any]],
-        *,
-        with_extended_output: Literal[False],
-        as_process: Literal[False],
-        stdout_as_string: Literal[True],
+        with_extended_output: Literal[False] = False,
+        stdout_as_string: Literal[True] = True,
+        with_stdout: Literal[True] = True,
+        **subprocess_kwargs: Any,
     ) -> str: ...
 
     @overload
     def execute(
         self,
         command: Union[str, Sequence[Any]],
+        istream: Union[None, int, BinaryIO] = None,
         *,
-        with_extended_output: Literal[False],
-        as_process: Literal[False],
+        as_process: Literal[False] = False,
+        with_extended_output: Literal[False] = False,
         stdout_as_string: Literal[False],
+        universal_newlines: Literal[False] = False,
+        with_stdout: Literal[True] = True,
+        **subprocess_kwargs: Any,
     ) -> bytes: ...
 
+    @overload
     def execute(
         self,
         command: Union[str, Sequence[Any]],
-        istream: Union[None, BinaryIO] = None,
+        istream: Union[None, int, BinaryIO] = None,
+        *,
+        as_process: Literal[False] = False,
+        with_extended_output: Literal[True],
+        stdout_as_string: Literal[True] = True,
+        with_stdout: Literal[True] = True,
+        **subprocess_kwargs: Any,
+    ) -> Tuple[int, str, str]: ...
+
+    @overload
+    def execute(
+        self,
+        command: Union[str, Sequence[Any]],
+        istream: Union[None, int, BinaryIO] = None,
+        *,
+        as_process: Literal[False] = False,
+        with_extended_output: Literal[True],
+        stdout_as_string: Literal[False],
+        universal_newlines: Literal[False] = False,
+        with_stdout: Literal[True] = True,
+        **subprocess_kwargs: Any,
+    ) -> Tuple[int, bytes, str]: ...
+
+    @overload
+    def execute(
+        self,
+        command: Union[str, Sequence[Any]],
+        istream: Union[None, int, BinaryIO] = None,
+        *,
+        as_process: Literal[False] = False,
+        with_extended_output: Literal[True],
+        **subprocess_kwargs: Any,
+    ) -> Tuple[int, Union[str, bytes, None], str]: ...
+
+    @overload
+    def execute(
+        self,
+        command: Union[str, Sequence[Any]],
+        istream: Union[None, int, BinaryIO] = None,
+        *,
+        as_process: Literal[False] = False,
+        with_extended_output: Literal[False] = False,
+        **subprocess_kwargs: Any,
+    ) -> Union[str, bytes, None]: ...
+
+    @overload
+    def execute(
+        self,
+        command: Union[str, Sequence[Any]],
+        istream: Union[None, int, BinaryIO] = None,
         with_extended_output: bool = False,
         with_exceptions: bool = True,
         as_process: bool = False,
@@ -1239,7 +1278,26 @@ class Git(metaclass=_GitMeta):
         max_chunk_size: int = io.DEFAULT_BUFFER_SIZE,
         strip_newline_in_stdout: bool = True,
         **subprocess_kwargs: Any,
-    ) -> Union[str, bytes, Tuple[int, Union[str, bytes], str], AutoInterrupt]:
+    ) -> Union[None, str, bytes, Tuple[int, Union[str, bytes, None], str], AutoInterrupt]: ...
+
+    def execute(
+        self,
+        command: Union[str, Sequence[Any]],
+        istream: Union[None, int, BinaryIO] = None,
+        with_extended_output: bool = False,
+        with_exceptions: bool = True,
+        as_process: bool = False,
+        output_stream: Union[None, BinaryIO] = None,
+        stdout_as_string: bool = True,
+        kill_after_timeout: Union[None, float] = None,
+        with_stdout: bool = True,
+        universal_newlines: bool = False,
+        shell: Union[None, bool] = None,
+        env: Union[None, Mapping[str, str]] = None,
+        max_chunk_size: int = io.DEFAULT_BUFFER_SIZE,
+        strip_newline_in_stdout: bool = True,
+        **subprocess_kwargs: Any,
+    ) -> Union[None, str, bytes, Tuple[int, Union[str, bytes, None], str], AutoInterrupt]:
         R"""Handle executing the command, and consume and return the returned
         information (stdout).
 
@@ -1303,9 +1361,9 @@ class Git(metaclass=_GitMeta):
             carefully considered, due to the following limitations:
 
             1. This feature is not supported at all on Windows.
-            2. Effectiveness may vary by operating system. ``ps --ppid`` is used to
-               enumerate child processes, which is available on most GNU/Linux systems
-               but not most others.
+            2. Enumerating child processes requires ``pgrep -P``, or a ``ps`` command
+               supporting the POSIX ``-A`` and ``-o`` options if ``pgrep`` is not
+               installed. Effectiveness may vary on systems without these commands.
             3. Deeper descendants do not receive signals, though they may sometimes
                terminate as a consequence of their parent processes being killed.
             4. `kill_after_timeout` uses ``SIGKILL``, which can have negative side
@@ -1465,14 +1523,24 @@ class Git(metaclass=_GitMeta):
 
                 This callback implementation would be ineffective and unsafe on Windows.
                 """
-                p = Popen(["ps", "--ppid", str(pid)], stdout=PIPE)
                 child_pids = []
-                if p.stdout is not None:
-                    for line in p.stdout:
-                        if len(line.split()) > 0:
-                            local_pid = (line.split())[0]
-                            if local_pid.isdigit():
-                                child_pids.append(int(local_pid))
+                try:
+                    p = Popen(["pgrep", "-P", str(pid)], stdout=PIPE)
+                except FileNotFoundError:
+                    # POSIX ps does not support selecting by parent PID.
+                    with Popen(["ps", "-A", "-o", "pid=", "-o", "ppid="], stdout=PIPE) as p:
+                        if p.stdout is not None:
+                            for line in p.stdout:
+                                fields = line.split()
+                                if len(fields) == 2 and all(field.isdigit() for field in fields):
+                                    if int(fields[1]) == pid:
+                                        child_pids.append(int(fields[0]))
+                else:
+                    with p:
+                        if p.stdout is not None:
+                            for line in p.stdout:
+                                if line.strip().isdigit():
+                                    child_pids.append(int(line))
                 try:
                     os.kill(pid, signal.SIGKILL)
                     for child_pid in child_pids:
@@ -1493,7 +1561,7 @@ class Git(metaclass=_GitMeta):
                 err = f'Timeout: the command "{" ".join(redacted_command)}" did not complete in {timeout:g} secs.'
                 return err if universal_newlines else err.encode(defenc)
 
-            def communicate() -> Tuple[AnyStr, AnyStr]:
+            def communicate() -> Tuple[Union[str, bytes, None], Union[str, bytes, None]]:
                 assert watchdog is not None
                 assert kill_check is not None
                 watchdog.start()
@@ -1513,8 +1581,8 @@ class Git(metaclass=_GitMeta):
 
         # Wait for the process to return.
         status = 0
-        stdout_value: Union[str, bytes] = b""
-        stderr_value: Union[str, bytes] = b""
+        stdout_value: Union[str, bytes, None] = b""
+        stderr_value: Union[str, bytes, None] = b""
         newline = "\n" if universal_newlines else b"\n"
         try:
             if output_stream is None:
@@ -1556,7 +1624,7 @@ class Git(metaclass=_GitMeta):
         if self.GIT_PYTHON_TRACE == "full":
             cmdstr = " ".join(redacted_command)
 
-            def as_text(stdout_value: Union[bytes, str]) -> str:
+            def as_text(stdout_value: Union[bytes, str, None]) -> str:
                 return not output_stream and safe_decode(stdout_value) or "<OUTPUT_STREAM>"
 
             # END as_text
@@ -1581,6 +1649,8 @@ class Git(metaclass=_GitMeta):
         if isinstance(stdout_value, bytes) and stdout_as_string:  # Could also be output_stream.
             stdout_value = safe_decode(stdout_value)
 
+        # stderr is always captured through PIPE.
+        assert stderr_value is not None
         # Allow access to the command's status code.
         if with_extended_output:
             return (status, stdout_value, safe_decode(stderr_value))
@@ -1819,7 +1889,7 @@ class Git(metaclass=_GitMeta):
             raise ValueError("Failed to parse header: %r" % header_line)
         return (tokens[0], tokens[1], int(tokens[2]))
 
-    def _prepare_ref(self, ref: AnyStr) -> bytes:
+    def _prepare_ref(self, ref: object) -> bytes:
         # Required for command to separate refs on stdin, as bytes.
         if isinstance(ref, bytes):
             # Assume 40 bytes hexsha - bin-to-ascii for some reason returns bytes, not text.
@@ -1846,7 +1916,7 @@ class Git(metaclass=_GitMeta):
         cmd = cast("Git.AutoInterrupt", cmd)
         return cmd
 
-    def __get_object_header(self, cmd: "Git.AutoInterrupt", ref: AnyStr) -> Tuple[str, str, int]:
+    def __get_object_header(self, cmd: "Git.AutoInterrupt", ref: Union[str, bytes]) -> Tuple[str, str, int]:
         if cmd.stdin and cmd.stdout:
             cmd.stdin.write(self._prepare_ref(ref))
             cmd.stdin.flush()
@@ -1854,7 +1924,7 @@ class Git(metaclass=_GitMeta):
         else:
             raise ValueError("cmd stdin was empty")
 
-    def get_object_header(self, ref: str) -> Tuple[str, str, int]:
+    def get_object_header(self, ref: Union[str, bytes]) -> Tuple[str, str, int]:
         """Use this method to quickly examine the type and size of the object behind the
         given ref.
 
@@ -1868,7 +1938,7 @@ class Git(metaclass=_GitMeta):
         cmd = self._get_persistent_cmd("cat_file_header", "cat_file", batch_check=True)
         return self.__get_object_header(cmd, ref)
 
-    def get_object_data(self, ref: str) -> Tuple[str, str, int, bytes]:
+    def get_object_data(self, ref: Union[str, bytes]) -> Tuple[str, str, int, bytes]:
         """Similar to :meth:`get_object_header`, but returns object data as well.
 
         :return:
@@ -1882,7 +1952,7 @@ class Git(metaclass=_GitMeta):
         del stream
         return (hexsha, typename, size, data)
 
-    def stream_object_data(self, ref: str) -> Tuple[str, str, int, "Git.CatFileContentStream"]:
+    def stream_object_data(self, ref: Union[str, bytes]) -> Tuple[str, str, int, "Git.CatFileContentStream"]:
         """Similar to :meth:`get_object_data`, but returns the data as a stream.
 
         :return:

@@ -30,7 +30,7 @@ from typing import (
 if TYPE_CHECKING:
     from _typeshed import ReadableBuffer
 
-    from git import GitCmdObjectDB
+    from gitdb.db.base import ObjectDBR
 
 EntryTup = Tuple[bytes, int, str]  # Same as TreeCacheTup in tree.py.
 EntryTupOrNone = Union[EntryTup, None]
@@ -166,7 +166,7 @@ def _to_full_path(item: EntryTupOrNone, path_prefix: str) -> EntryTupOrNone:
 
 
 def traverse_trees_recursive(
-    odb: "GitCmdObjectDB", tree_shas: Sequence[Union[bytes, None]], path_prefix: str
+    odb: "ObjectDBR", tree_shas: Sequence[Union[bytes, None]], path_prefix: str
 ) -> List[Tuple[EntryTupOrNone, ...]]:
     """
     :return:
@@ -253,7 +253,7 @@ def traverse_trees_recursive(
     return out
 
 
-def traverse_tree_recursive(odb: "GitCmdObjectDB", tree_sha: bytes, path_prefix: str) -> List[EntryTup]:
+def traverse_tree_recursive(odb: "ObjectDBR", tree_sha: bytes, path_prefix: str) -> List[EntryTup]:
     """
     :return:
         List of entries of the tree pointed to by the binary `tree_sha`.

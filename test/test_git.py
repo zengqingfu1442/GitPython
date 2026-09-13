@@ -14,6 +14,7 @@ from pathlib import Path
 import pickle
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -136,24 +137,24 @@ class TestGit(TestBase):
         self.assertRaises(GitCommandError, self.git.this_does_not_exist)
 
     def test_it_transforms_kwargs_into_git_command_arguments(self):
-        self.assertEqual(["-s"], self.git.transform_kwargs(**{"s": True}))
-        self.assertEqual(["-s", "5"], self.git.transform_kwargs(**{"s": 5}))
-        self.assertEqual([], self.git.transform_kwargs(**{"s": None}))
+        self.assertEqual(["-s"], self.git.transform_kwargs(s=True))
+        self.assertEqual(["-s", "5"], self.git.transform_kwargs(s=5))
+        self.assertEqual([], self.git.transform_kwargs(s=None))
 
-        self.assertEqual(["--max-count"], self.git.transform_kwargs(**{"max_count": True}))
-        self.assertEqual(["--max-count=5"], self.git.transform_kwargs(**{"max_count": 5}))
-        self.assertEqual(["--max-count=0"], self.git.transform_kwargs(**{"max_count": 0}))
-        self.assertEqual([], self.git.transform_kwargs(**{"max_count": None}))
+        self.assertEqual(["--max-count"], self.git.transform_kwargs(max_count=True))
+        self.assertEqual(["--max-count=5"], self.git.transform_kwargs(max_count=5))
+        self.assertEqual(["--max-count=0"], self.git.transform_kwargs(max_count=0))
+        self.assertEqual([], self.git.transform_kwargs(max_count=None))
 
         # Multiple args are supported by using lists/tuples.
         self.assertEqual(
             ["-L", "1-3", "-L", "12-18"],
-            self.git.transform_kwargs(**{"L": ("1-3", "12-18")}),
+            self.git.transform_kwargs(L=("1-3", "12-18")),
         )
-        self.assertEqual(["-C", "-C"], self.git.transform_kwargs(**{"C": [True, True, None, False]}))
+        self.assertEqual(["-C", "-C"], self.git.transform_kwargs(C=[True, True, None, False]))
 
         # Order is undefined.
-        res = self.git.transform_kwargs(**{"s": True, "t": True})
+        res = self.git.transform_kwargs(s=True, t=True)
         self.assertEqual({"-s", "-t"}, set(res))
 
     def test_check_unsafe_options_normalizes_kwargs(self):
@@ -220,7 +221,9 @@ class TestGit(TestBase):
         candidates = Git._option_candidates(kwargs=kwargs)
 
         self.assertEqual(candidates, ["--pathspec-from-file"])
-        self.assertEqual(self.git.transform_kwargs(**kwargs), ["--pathspec-from-file=0"])
+        self.assertEqual(
+            self.git.transform_kwargs(split_single_char_options=True, **kwargs), ["--pathspec-from-file=0"]
+        )
         with self.assertRaises(UnsafeOptionError):
             Git.check_unsafe_options(
                 options=candidates,
@@ -331,6 +334,63 @@ class TestGit(TestBase):
         self.assertNotEqual(status, 0)
         self.assertEqual(output_stream.getvalue(), b"started\n")
         self.assertIn("Timeout: the command", stderr)
+
+    @skipUnless(
+        sys.platform not in ("win32", "cygwin"),
+        "child process lookup requires pgrep or POSIX ps",
+    )
+    @ddt.data(False, True)
+    def test_timeout_kills_direct_child(self, without_pgrep):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory, "child-survived")
+            child_code = (
+                "import pathlib, sys, time; time.sleep(2); "
+                "pathlib.Path(sys.argv[1]).write_text('survived', encoding='utf-8')"
+            )
+            parent_code = (
+                "import subprocess, sys, time; "
+                "subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2]]); "
+                "time.sleep(30)"
+            )
+            popen = cmd.Popen
+
+            def portable_popen(args, **kwargs):
+                if without_pgrep and args[0] == "pgrep":
+                    raise FileNotFoundError("pgrep is not installed")
+                return popen(args, **kwargs)
+
+            with mock.patch.object(cmd, "Popen", side_effect=portable_popen):
+                status, _, stderr = self.git.execute(
+                    [sys.executable, "-c", parent_code, child_code, str(marker)],
+                    kill_after_timeout=1,
+                    with_exceptions=False,
+                    with_extended_output=True,
+                )
+
+            self.assertNotEqual(status, 0)
+            self.assertIn("Timeout: the command", stderr)
+            self.assertFalse(marker.exists(), "the direct child survived the timeout")
+
+    @skipUnless(sys.platform != "win32", "kill_after_timeout is not supported on Windows")
+    def test_timeout_ps_fallback_selects_only_direct_children(self):
+        process = mock.MagicMock()
+        process.pid = 1234
+        process.communicate.return_value = (b"", b"")
+        process.returncode = -signal.SIGKILL
+        ps = mock.MagicMock()
+        ps.__enter__.return_value = ps
+        ps.stdout = io.BytesIO(b"PID PPID\n 321 1\n 5678 1234\n 9012 5678\n\n")
+
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(cmd, "safer_popen", return_value=process))
+            stack.enter_context(mock.patch.object(cmd, "Popen", side_effect=[FileNotFoundError, ps]))
+            kill = stack.enter_context(mock.patch.object(cmd.os, "kill"))
+            timer = stack.enter_context(mock.patch.object(cmd.threading, "Timer"))
+            # Run the timeout callback synchronously, with no real processes or signals.
+            timer.return_value.start.side_effect = lambda: timer.call_args.args[1](1234)
+            self.git.execute(["git", "version"], kill_after_timeout=1, with_exceptions=False)
+
+        self.assertEqual(kill.call_args_list, [mock.call(1234, signal.SIGKILL), mock.call(5678, signal.SIGKILL)])
 
     def test_it_executes_git_without_stdout_redirect(self):
         returncode, stdout, stderr = self.git.execute(
@@ -576,6 +636,7 @@ class TestGit(TestBase):
             with mock.patch.dict(os.environ, env_vars):
                 with self.assertLogs(cmd.__name__, logging.CRITICAL) as ctx:
                     refresh()
+                assert ctx is not None
                 self.assertEqual(len(ctx.records), 1)
                 message = ctx.records[0].getMessage()
                 self.assertRegex(message, r"\ABad git executable.\n")
@@ -695,6 +756,7 @@ class TestGit(TestBase):
     def test_refresh_with_good_relative_git_path_arg(self):
         """Good relative path arg is resolved to absolute path and set."""
         absolute_path = shutil.which("git")
+        assert absolute_path is not None
         dirname, basename = osp.split(absolute_path)
 
         with cwd(dirname):

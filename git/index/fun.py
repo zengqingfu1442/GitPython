@@ -46,7 +46,7 @@ from typing import Dict, IO, List, Sequence, TYPE_CHECKING, Tuple, Type, Union, 
 from git.types import PathLike
 
 if TYPE_CHECKING:
-    from git.db import GitCmdObjectDB
+    from gitdb.db.base import ObjectDBR, ObjectDBW
     from git.objects.tree import TreeCacheTup
 
     from .base import IndexFile
@@ -412,7 +412,7 @@ def read_cache(
 
 
 def write_tree_from_cache(
-    entries: List[IndexEntry], odb: "GitCmdObjectDB", sl: slice, si: int = 0
+    entries: List[IndexEntry], odb: "ObjectDBW", sl: slice, si: int = 0
 ) -> Tuple[bytes, List["TreeCacheTup"]]:
     R"""Create a tree from the given sorted list of entries and put the respective
     trees into the given object database.
@@ -484,7 +484,7 @@ def _tree_entry_to_baseindexentry(tree_entry: "TreeCacheTup", stage: int) -> Bas
     return BaseIndexEntry((tree_entry[1], tree_entry[0], stage << CE_STAGESHIFT, tree_entry[2]))
 
 
-def aggressive_tree_merge(odb: "GitCmdObjectDB", tree_shas: Sequence[bytes]) -> List[BaseIndexEntry]:
+def aggressive_tree_merge(odb: "ObjectDBR", tree_shas: Sequence[bytes]) -> List[BaseIndexEntry]:
     R"""
     :return:
         List of :class:`~git.index.typ.BaseIndexEntry`\s representing the aggressive

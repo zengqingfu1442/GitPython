@@ -40,11 +40,10 @@ from typing import Iterator, Optional, TYPE_CHECKING, Tuple, Union, cast, overlo
 from git.types import AnyGitObject, Literal, PathLike
 
 if TYPE_CHECKING:
-    from git.db import GitCmdObjectDB
+    from gitdb.db import CompoundDB, LooseObjectDB
     from git.objects import Commit
     from git.refs.reference import Reference
     from git.refs.log import RefLog, RefLogEntry
-    from git.refs.tag import Tag
 
     from .base import Repo
 
@@ -158,7 +157,7 @@ def find_submodule_git_dir(d: PathLike) -> Optional[PathLike]:
     return path if is_git_dir(path) else None
 
 
-def short_to_long(odb: "GitCmdObjectDB", hexsha: str) -> Optional[bytes]:
+def short_to_long(odb: Union["CompoundDB", "LooseObjectDB"], hexsha: str) -> Optional[bytes]:
     """
     :return:
         Long hexadecimal sha1 from the given less than 40 byte hexsha, or ``None`` if no
@@ -261,7 +260,7 @@ def name_to_object(repo: "Repo", name: str, return_ref: bool = False) -> Union[A
     return Object.new_from_sha(repo, hex_to_bin(hexsha))
 
 
-def deref_tag(tag: "Tag") -> AnyGitObject:
+def deref_tag(tag: AnyGitObject) -> AnyGitObject:
     """Recursively dereference a tag and return the resulting object."""
     while True:
         try:
@@ -272,7 +271,7 @@ def deref_tag(tag: "Tag") -> AnyGitObject:
     return tag
 
 
-def to_commit(obj: Object) -> "Commit":
+def to_commit(obj: AnyGitObject) -> "Commit":
     """Convert the given object to a commit if possible and return it."""
     if obj.type == "tag":
         obj = deref_tag(obj)
@@ -521,7 +520,7 @@ def _find_commit_by_message(
     if rev is None:
         commits = _all_ref_commits(repo)
     else:
-        commits = _reachable_commits([to_commit(cast(Object, rev))])
+        commits = _reachable_commits([to_commit(rev)])
     # END handle starting point
 
     for commit in commits:
@@ -541,7 +540,7 @@ def _all_ref_commits(repo: "Repo") -> Iterator["Commit"]:
     starts = []
     for ref in repo.references:
         try:
-            starts.append(to_commit(cast(Object, ref.object)))
+            starts.append(to_commit(ref.object))
         except (BadName, ValueError):
             pass
         # END skip refs that do not point to commits
@@ -589,7 +588,7 @@ def _index_lookup(repo: "Repo", spec: str) -> AnyGitObject:
 
 def _tree_lookup(obj: AnyGitObject, path: str) -> AnyGitObject:
     if obj.type != "tree":
-        obj = to_commit(cast(Object, obj)).tree
+        obj = to_commit(obj).tree
     # END get tree
     if not path:
         return obj
@@ -604,9 +603,9 @@ def _peel(obj: AnyGitObject, output_type: str, repo: "Repo", rev: str) -> AnyGit
     if output_type == "object":
         return obj
     if output_type == "commit":
-        return to_commit(cast(Object, obj))
+        return to_commit(obj)
     if output_type == "tree":
-        return to_commit(cast(Object, obj)).tree if obj.type != "tree" else obj
+        return to_commit(obj).tree if obj.type != "tree" else obj
     if output_type == "blob":
         obj = deref_tag(obj) if obj.type == "tag" else obj
         if obj.type == output_type:

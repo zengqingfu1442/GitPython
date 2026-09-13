@@ -26,7 +26,7 @@ def require_remote_ref_path(func: Callable[..., _T]) -> Callable[..., _T]:
     """A decorator raising :exc:`ValueError` if we are not a valid remote, based on the
     path."""
 
-    def wrapper(self: T_References, *args: Any) -> _T:
+    def wrapper(self: SymbolicReference, *args: Any) -> _T:
         if not self.is_remote():
             raise ValueError("ref path does not point to a remote reference: %s" % self.path)
         return func(self, *args)

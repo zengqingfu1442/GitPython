@@ -9,12 +9,13 @@ from binascii import b2a_hex
 from pathlib import Path
 
 from git.objects import Blob
+from git.objects.base import IndexObject
 
 from .util import pack, unpack
 
 # typing ----------------------------------------------------------------------
 
-from typing import NamedTuple, Sequence, TYPE_CHECKING, Tuple, Union, cast
+from typing import NamedTuple, Sequence, TYPE_CHECKING, Tuple, Type, TypeVar, Union, cast
 
 from git.types import PathLike
 
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from git.repo import Repo
 
 StageType = int
+_T_IndexEntry = TypeVar("_T_IndexEntry", bound="BaseIndexEntry")
 
 # ---------------------------------------------------------------------------------
 
@@ -104,15 +106,20 @@ class BaseIndexEntry(BaseIndexEntryHelper):
     """
 
     def __new__(
-        cls,
+        cls: Type[_T_IndexEntry],
         inp_tuple: Union[
             Tuple[int, bytes, int, PathLike],
+            Tuple[int, bytes, int, PathLike, bytes, bytes, int, int, int, int, int],
             Tuple[int, bytes, int, PathLike, bytes, bytes, int, int, int, int, int, int],
         ],
-    ) -> "BaseIndexEntry":
+    ) -> _T_IndexEntry:
         """Override ``__new__`` to allow construction from a tuple for backwards
         compatibility."""
-        return super().__new__(cls, *inp_tuple)
+        if len(inp_tuple) == 4:
+            return BaseIndexEntryHelper.__new__(cls, *inp_tuple)
+        if len(inp_tuple) == 11:
+            return BaseIndexEntryHelper.__new__(cls, *inp_tuple)
+        return BaseIndexEntryHelper.__new__(cls, *inp_tuple)
 
     def __str__(self) -> str:
         return "%o %s %i\t%s" % (self.mode, self.hexsha, self.stage, self.path)
@@ -148,7 +155,7 @@ class BaseIndexEntry(BaseIndexEntryHelper):
         return (self.extended_flags & CE_EXT_INTENT_TO_ADD) > 0
 
     @classmethod
-    def from_blob(cls, blob: Blob, stage: int = 0) -> "BaseIndexEntry":
+    def from_blob(cls, blob: IndexObject, stage: int = 0) -> "BaseIndexEntry":
         """:return: Fully equipped BaseIndexEntry at the given stage"""
         return cls((blob.mode, blob.binsha, stage << CE_STAGESHIFT, blob.path))
 
@@ -192,10 +199,10 @@ class IndexEntry(BaseIndexEntry):
             Instance of type :class:`BaseIndexEntry`.
         """
         time = pack(">LL", 0, 0)
-        return IndexEntry((base.mode, base.binsha, base.flags, base.path, time, time, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
+        return IndexEntry((base.mode, base.binsha, base.flags, base.path, time, time, 0, 0, 0, 0, 0))
 
     @classmethod
-    def from_blob(cls, blob: Blob, stage: int = 0) -> "IndexEntry":
+    def from_blob(cls, blob: IndexObject, stage: int = 0) -> "IndexEntry":
         """:return: Minimal entry resembling the given blob object"""
         time = pack(">LL", 0, 0)
         return IndexEntry(
@@ -211,5 +218,5 @@ class IndexEntry(BaseIndexEntry):
                 0,
                 0,
                 blob.size,
-            )  # type: ignore[arg-type]
+            )
         )
