@@ -68,7 +68,6 @@ from gitdb.util import (
 from typing import (
     Any,
     AnyStr,
-    BinaryIO,
     Callable,
     Dict,
     Generator,
@@ -101,6 +100,8 @@ from git.types import (
     PathLike,
     Protocol,
     SupportsIndex,
+    SupportsRead,
+    SupportsWrite,
     Total_TD,
     runtime_checkable,
 )
@@ -253,7 +254,7 @@ def rmfile(path: PathLike) -> None:
         os.remove(path)
 
 
-def stream_copy(source: BinaryIO, destination: BinaryIO, chunk_size: int = 512 * 1024) -> int:
+def stream_copy(source: SupportsRead[AnyStr], destination: SupportsWrite[AnyStr], chunk_size: int = 512 * 1024) -> int:
     """Copy all data from the `source` stream into the `destination` stream in chunks
     of size `chunk_size`.
 

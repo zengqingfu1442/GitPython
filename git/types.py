@@ -48,6 +48,22 @@ TBD = Any
 _T = TypeVar("_T")
 """Type variable used internally in GitPython."""
 
+_T_Stream_co = TypeVar("_T_Stream_co", str, bytes, covariant=True)
+_T_Stream_contra = TypeVar("_T_Stream_contra", str, bytes, contravariant=True)
+
+
+class SupportsRead(Protocol[_T_Stream_co]):
+    """A stream supporting reads, without requiring the full IO interface."""
+
+    def read(self, __size: int = -1) -> _T_Stream_co: ...
+
+
+class SupportsWrite(Protocol[_T_Stream_contra]):
+    """A stream supporting writes, including writers that return None."""
+
+    def write(self, __data: _T_Stream_contra) -> object: ...
+
+
 AnyGitObject = Union["Commit", "Tree", "TagObject", "Blob"]
 """Union of the :class:`~git.objects.base.Object`-based types that represent actual git
 object types.

@@ -502,7 +502,7 @@ class Commit(base.Object, TraversableIterableObj, Diffable, Serializable):
     ) -> str:
         message_bytes = message if isinstance(message, bytes) else message.encode(encoding, errors="strict")
         cmd = [repo.git.GIT_PYTHON_GIT_EXECUTABLE, "interpret-trailers", *trailer_args]
-        proc: Git.AutoInterrupt = repo.git.execute(  # type: ignore[call-overload]
+        proc: Git.AutoInterrupt = repo.git.execute(
             cmd,
             as_process=True,
             istream=PIPE,

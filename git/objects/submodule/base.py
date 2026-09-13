@@ -14,7 +14,7 @@ import shlex
 import stat
 import sys
 import uuid
-import urllib
+import urllib.parse
 
 import git
 from git.cmd import Git
@@ -1769,7 +1769,7 @@ class Submodule(IndexObject, TraversableIterableObj):
             # END handle critical error
 
             # Make sure we are looking at a submodule object.
-            if type(sm) is not git.objects.submodule.base.Submodule:
+            if type(sm) is not Submodule:
                 continue
 
             # Fill in remaining info - saves time as it doesn't have to be parsed again.

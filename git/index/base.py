@@ -1235,7 +1235,7 @@ class IndexFile(LazyMixin, git_diff.Diffable, Serializable):
     def _commit_editmsg_filepath(self) -> str:
         return osp.join(self.repo.common_dir, "COMMIT_EDITMSG")
 
-    def _flush_stdin_and_wait(cls, proc: "Popen[bytes]", ignore_stdout: bool = False) -> bytes:
+    def _flush_stdin_and_wait(self, proc: "Popen[bytes]", ignore_stdout: bool = False) -> bytes:
         stdin_IO = proc.stdin
         if stdin_IO:
             stdin_IO.flush()

@@ -23,6 +23,8 @@ from .util import get_object_type_by_name, parse_actor_and_date
 
 from typing import List, TYPE_CHECKING, Union
 
+from git.types import AnyGitObject
+
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
@@ -61,7 +63,7 @@ class TagObject(base.Object):
         self,
         repo: "Repo",
         binsha: bytes,
-        object: Union[None, base.Object] = None,
+        object: Union[None, AnyGitObject] = None,
         tag: Union[None, str] = None,
         tagger: Union[None, Actor] = None,
         tagged_date: Union[int, None] = None,
